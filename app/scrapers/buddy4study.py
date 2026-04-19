@@ -16,7 +16,7 @@ from app.scrapers.http_util import RobotsChecker, fetch_text
 
 log = logging.getLogger(__name__)
 
-MAX_LIST_URLS = 3
+MAX_LIST_URLS = 20
 
 
 def _absolute_url(base: str, href: str) -> str:
@@ -57,6 +57,23 @@ def discover_listing_urls(list_html: str, list_url: str) -> list[str]:
     return out
 
 
+def discover_listing_card_urls(list_html: str, list_url: str) -> list[str]:
+    soup = BeautifulSoup(list_html, "html.parser")
+    found: list[str] = []
+    for a in soup.find_all("a", href=True):
+        classes = " ".join(a.get("class", []))
+        if "Listing_categoriesBox" not in classes:
+            continue
+        full = _absolute_url(list_url, a["href"])
+        if not _same_site(list_url, full):
+            continue
+        low = full.lower()
+        if any(x in low for x in (".pdf", ".jpg", ".png", ".jpeg", "/login", "/register")):
+            continue
+        found.append(full)
+    return list(dict.fromkeys(found))
+
+
 def _is_acceptable_detail_url(full: str) -> bool:
     try:
         parsed = urlparse(full)
@@ -66,7 +83,7 @@ def _is_acceptable_detail_url(full: str) -> bool:
     if "buddy4study.com" not in host:
         return False
     path = (parsed.path or "").rstrip("/").lower()
-    if "scholarship" not in path:
+    if not path or path == "/":
         return False
     low = full.lower()
     if any(x in low for x in (".pdf", ".jpg", ".png", ".jpeg", "/login", "/register")):
@@ -75,6 +92,8 @@ def _is_acceptable_detail_url(full: str) -> bool:
     if not segments:
         return False
     if segments in (["scholarships"], ["scholarship"]):
+        return False
+    if path.startswith("/scholarships/"):
         return False
     if len(segments) == 2 and segments[-1] == "scholarships":
         return False
@@ -137,8 +156,10 @@ def _urls_from_next_data(html: str) -> set[str]:
 
 def _urls_from_raw_html_strings(html: str) -> set[str]:
     found: set[str] = set()
+    for m in re.finditer(r'["\'](/scholarships/[^"\'>\s]+)["\']', html, re.I):
+        found.add(m.group(1))
     for m in re.finditer(
-        r'https?://(?:www\.)?buddy4study\.com/[a-zA-Z0-9][a-zA-Z0-9\-._~/%#?=&]*',
+        r'https?://(?:www\.)?buddy4study\.com/(?:scholarship|page)/[a-zA-Z0-9][a-zA-Z0-9\-._~/%#?=&]*',
         html,
         re.I,
     ):
@@ -178,6 +199,11 @@ def collect_scholarship_detail_urls(html: str, list_url: str) -> list[str]:
         if nu:
             candidates.add(nu)
 
+    for u in discover_listing_card_urls(html, list_url):
+        nu = _normalize_candidate_url(u, list_url)
+        if nu:
+            candidates.add(nu)
+
     for raw in (
         _urls_from_next_data(html)
         | _urls_from_raw_html_strings(html)
@@ -197,6 +223,86 @@ def collect_scholarship_detail_urls(html: str, list_url: str) -> list[str]:
         seen.add(u)
         ordered.append(u)
     return ordered[:cap]
+
+
+def collect_listing_urls(html: str, list_url: str) -> list[str]:
+    candidates: set[str] = set()
+    for u in discover_listing_urls(html, list_url):
+        nu = _normalize_candidate_url(u, list_url)
+        if nu:
+            candidates.add(nu)
+    for raw in (
+        _urls_from_next_data(html)
+        | _urls_from_raw_html_strings(html)
+        | _urls_from_json_script_tags(html)
+    ):
+        nu = _normalize_candidate_url(raw, list_url)
+        if nu:
+            candidates.add(nu)
+
+    out: list[str] = []
+    for u in sorted(candidates):
+        path = urlparse(u).path.lower().rstrip("/")
+        if not path.startswith("/scholarships/"):
+            continue
+        if u not in out:
+            out.append(u)
+    return out
+
+
+def _urls_from_sitemap_xml(xml_text: str) -> list[str]:
+    soup = BeautifulSoup(xml_text, "xml")
+    out: list[str] = []
+    for loc in soup.find_all("loc"):
+        text = (loc.get_text() or "").strip()
+        if text:
+            out.append(text)
+    return out
+
+
+def collect_detail_urls_from_sitemaps(robots: RobotsChecker, ua: str) -> list[str]:
+    cap = max(1, settings.max_scrape_detail_pages)
+    sitemap_index_url = "https://www.buddy4study.com/sitemap.xml"
+    if not robots.allowed(sitemap_index_url, ua):
+        return []
+
+    try:
+        index_xml = fetch_text(sitemap_index_url)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("sitemap index fetch failed %s: %s", sitemap_index_url, exc)
+        return []
+
+    sitemap_urls = _urls_from_sitemap_xml(index_xml)
+    if not sitemap_urls:
+        return []
+
+    collected: list[str] = []
+    seen: set[str] = set()
+    for sm_url in sitemap_urls:
+        if len(collected) >= cap:
+            break
+        if not _same_site(sitemap_index_url, sm_url):
+            continue
+        if not robots.allowed(sm_url, ua):
+            continue
+        try:
+            sm_xml = fetch_text(sm_url)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("sitemap fetch failed %s: %s", sm_url, exc)
+            continue
+
+        for raw in _urls_from_sitemap_xml(sm_xml):
+            if len(collected) >= cap:
+                break
+            nu = _normalize_candidate_url(raw, sitemap_index_url)
+            if not nu or nu in seen:
+                continue
+            path = urlparse(nu).path.lower()
+            if not (path.startswith("/scholarship/") or path.startswith("/page/")):
+                continue
+            seen.add(nu)
+            collected.append(nu)
+    return collected
 
 
 def _text_one(soup: BeautifulSoup, selector: str) -> str | None:
@@ -303,7 +409,19 @@ def run_buddy4study_scrape(robots: RobotsChecker) -> list[ScholarshipIn]:
         except Exception as exc:  # noqa: BLE001
             log.warning("list fetch failed %s: %s", current, exc)
             continue
-        detail_urls = collect_scholarship_detail_urls(html, current)
+        for lurl in collect_listing_urls(html, current):
+            if lurl not in visited_lists and lurl not in queue:
+                queue.append(lurl)
+        # Listing pages are category hubs under /scholarships/*.
+        # Detail pages are usually /scholarship/*, /page/*, or card URLs.
+        detail_urls: list[str] = []
+        for u in collect_scholarship_detail_urls(html, current):
+            if urlparse(u).path.lower().startswith("/scholarships/"):
+                if u not in visited_lists and u not in queue:
+                    queue.append(u)
+                continue
+            detail_urls.append(u)
+
         if not detail_urls:
             log.warning(
                 "No scholarship detail URLs found in HTML from %s "
@@ -335,4 +453,18 @@ def run_buddy4study_scrape(robots: RobotsChecker) -> list[ScholarshipIn]:
     by_url: dict[str, ScholarshipIn] = {}
     for it in items:
         by_url[it.source_url] = it
-    return list(by_url.values())
+    deduped = list(by_url.values())
+
+    if deduped:
+        return deduped
+
+    # Fallback for JS-rendered listing pages: use sitemap detail URLs.
+    for durl in collect_detail_urls_from_sitemaps(robots, ua):
+        if not robots.allowed(durl, ua):
+            continue
+        try:
+            dhtml = fetch_text(durl)
+            deduped.append(parse_detail(dhtml, durl))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("detail fetch failed %s: %s", durl, exc)
+    return deduped
