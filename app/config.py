@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     database_url: str = "sqlite:///./data/app.db"
+    # Required for remote Turso when DATABASE_URL is libsql://...
+    turso_auth_token: str | None = None
     data_dir: Path = Path("data")
     resume_dir: Path = Path("data/resumes")
     admin_token: str = "dev-admin-change-me"
@@ -29,6 +31,22 @@ class Settings(BaseSettings):
     llm_embedding_model: str = "text-embedding-3-small"
     match_retrieval_k: int = 60
     match_llm_top_k: int = 20
+
+    def sqlalchemy_database_url(self) -> str:
+        """SQLAlchemy URL (Turso libsql:// becomes sqlite+libsql:// per Turso docs)."""
+        if self.database_url.startswith("libsql://"):
+            return f"sqlite+{self.database_url}?secure=true"
+        return self.database_url
+
+    def sqlalchemy_connect_args(self) -> dict:
+        if self.database_url.startswith("libsql://"):
+            args: dict = {}
+            if self.turso_auth_token:
+                args["auth_token"] = self.turso_auth_token
+            return args
+        if self.database_url.startswith("sqlite"):
+            return {"check_same_thread": False}
+        return {}
 
 
 settings = Settings()
