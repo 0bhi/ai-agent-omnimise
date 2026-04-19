@@ -19,6 +19,16 @@ class Settings(BaseSettings):
     # Lower = faster scrapes (be polite on shared/public networks).
     scrape_request_delay_seconds: float = 0.25
     max_scrape_detail_pages: int = 12
+    # Chat (OpenAI-compatible): default Groq. Set LLM_API_KEY to your Groq key.
+    llm_api_base: str = "https://api.groq.com/openai/v1"
+    llm_api_key: str | None = None
+    llm_chat_model: str = "llama-3.3-70b-versatile"
+    # Embeddings: use Gemini when GEMINI_API_KEY is set; otherwise optional OpenAI-style embeddings.
+    gemini_api_key: str | None = None
+    gemini_embedding_model: str = "text-embedding-004"
+    llm_embedding_model: str = "text-embedding-3-small"
+    match_retrieval_k: int = 60
+    match_llm_top_k: int = 20
 
 
 settings = Settings()
