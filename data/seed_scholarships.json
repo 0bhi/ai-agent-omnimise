@@ -1,0 +1,24 @@
+{
+  "items": [
+    {
+      "source": "seed",
+      "source_url": "https://example.org/scholarships/seed-merit-2026",
+      "title": "Merit scholarship for engineering students",
+      "summary": "Open to undergraduate engineering students with strong academics.",
+      "eligibility_text": "Applicants must be pursuing B.Tech or BE in any discipline. Minimum 75% marks.",
+      "amount": "₹50,000",
+      "deadline": "2026-12-31",
+      "tags": ["engineering", "undergraduate"]
+    },
+    {
+      "source": "seed",
+      "source_url": "https://example.org/scholarships/seed-women-stem",
+      "title": "Women in STEM grant",
+      "summary": "Supporting women students in science and technology fields.",
+      "eligibility_text": "Female students enrolled in STEM programs at recognized institutions.",
+      "amount": "₹30,000",
+      "deadline": "2026-08-15",
+      "tags": ["women", "stem", "science"]
+    }
+  ]
+}
