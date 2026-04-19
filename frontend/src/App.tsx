@@ -81,6 +81,7 @@ export default function App() {
   const [schTotal, setSchTotal] = useState(0);
   const [matches, setMatches] = useState<MatchItem[]>([]);
   const [busy, setBusy] = useState(false);
+  const [searchText, setSearchText] = useState("");
 
   useEffect(() => {
     localStorage.setItem(LS_ADMIN, adminToken);
@@ -272,17 +273,48 @@ export default function App() {
     }
   };
 
+  const clearLocalUser = () => {
+    setUserId("");
+    localStorage.removeItem(LS_USER);
+    showOk("Cleared saved user id");
+  };
+
+  const filteredScholarships = useMemo(() => {
+    const query = searchText.trim().toLowerCase();
+    if (!query) {
+      return scholarships;
+    }
+    return scholarships.filter((s) => s.title.toLowerCase().includes(query));
+  }, [scholarships, searchText]);
+
+  const topMatches = useMemo(
+    () => [...matches].sort((a, b) => b.score - a.score).slice(0, 5),
+    [matches],
+  );
+
+  const stats = useMemo(
+    () => [
+      { label: "Total scholarships", value: String(schTotal) },
+      { label: "Visible now", value: String(filteredScholarships.length) },
+      { label: "Matches", value: String(matches.length) },
+      { label: "User ready", value: userId ? "Yes" : "No" },
+    ],
+    [schTotal, filteredScholarships.length, matches.length, userId],
+  );
+
   const banner = useMemo(() => {
     if (error) {
       return (
-        <article style={{ background: "var(--pico-card-background-color)" }}>
-          <p style={{ color: "var(--pico-del-color)" }}>{error}</p>
+        <article className="status status-error">
+          <strong>Error</strong>
+          <p>{error}</p>
         </article>
       );
     }
     if (message) {
       return (
-        <article>
+        <article className="status status-ok">
+          <strong>Success</strong>
           <p>{message}</p>
         </article>
       );
@@ -291,79 +323,110 @@ export default function App() {
   }, [error, message]);
 
   return (
-    <main className="container">
-      <h1>Scholarship test UI</h1>
-      <p>
-        API base: <code>{apiBase()}</code>
-      </p>
+    <main className="container app-shell">
+      <header className="hero">
+        <div>
+          <h1>Scholarship Assistant</h1>
+          <p className="hero-sub">
+            Scrape scholarship data, create user profiles, and view best matches from one place.
+          </p>
+        </div>
+        <p className="api-base">
+          API base: <code>{apiBase()}</code>
+        </p>
+      </header>
       {banner}
 
-      <section>
-        <h2>User</h2>
-        <label>
-          Profile JSON
-          <textarea
-            value={profileJson}
-            onChange={(e) => setProfileJson(e.target.value)}
-            rows={8}
-            style={{ fontFamily: "monospace" }}
-          />
-        </label>
-        <button type="button" disabled={busy} onClick={() => void createUser()}>
-          Create user
-        </button>
-        <label>
-          User id (stored in localStorage)
+      <section className="stats-grid">
+        {stats.map((s) => (
+          <article key={s.label} className="stat-card">
+            <p>{s.label}</p>
+            <h3>{s.value}</h3>
+          </article>
+        ))}
+      </section>
+
+      <section className="card-grid">
+        <article>
+          <h2>1) User profile</h2>
+          <p className="muted">Paste profile JSON and create a user before requesting matches.</p>
+          <label>
+            Profile JSON
+            <textarea
+              value={profileJson}
+              onChange={(e) => setProfileJson(e.target.value)}
+              rows={8}
+              className="mono"
+            />
+          </label>
+          <div className="row">
+            <button type="button" disabled={busy} onClick={() => void createUser()}>
+              {busy ? "Working..." : "Create user"}
+            </button>
+          </div>
+          <label>
+            User id (saved in browser)
+            <input
+              placeholder="Paste user id"
+              value={userId}
+              onChange={(e) => {
+                setUserId(e.target.value);
+                localStorage.setItem(LS_USER, e.target.value);
+              }}
+            />
+          </label>
+          <button type="button" className="secondary" disabled={busy} onClick={clearLocalUser}>
+            Clear saved user id
+          </button>
+        </article>
+
+        <article>
+          <h2>2) Resume</h2>
+          <p className="muted">Upload PDF or DOCX resume for smarter matching.</p>
           <input
-            value={userId}
-            onChange={(e) => {
-              setUserId(e.target.value);
-              localStorage.setItem(LS_USER, e.target.value);
-            }}
+            type="file"
+            accept=".pdf,.docx"
+            disabled={busy}
+            onChange={(e) => void uploadResume(e.target.files?.[0] ?? null)}
           />
-        </label>
+          <h2>3) Admin actions</h2>
+          <label>
+            X-Admin-Token
+            <input
+              type="password"
+              value={adminToken}
+              onChange={(e) => setAdminToken(e.target.value)}
+              autoComplete="off"
+            />
+          </label>
+          <div className="row">
+            <button type="button" disabled={busy} onClick={() => void runScrape()}>
+              Run scrape
+            </button>
+            <button type="button" className="secondary" disabled={busy} onClick={() => void importSample()}>
+              Import sample
+            </button>
+          </div>
+        </article>
       </section>
 
       <section>
-        <h2>Resume</h2>
-        <input
-          type="file"
-          accept=".pdf,.docx"
-          disabled={busy}
-          onChange={(e) => void uploadResume(e.target.files?.[0] ?? null)}
-        />
-      </section>
-
-      <section>
-        <h2>Admin</h2>
-        <label>
-          X-Admin-Token
+        <h2>4) Scholarships</h2>
+        <div className="row">
+          <button type="button" disabled={busy} onClick={() => void loadScholarships()}>
+            Refresh list
+          </button>
           <input
-            type="password"
-            value={adminToken}
-            onChange={(e) => setAdminToken(e.target.value)}
-            autoComplete="off"
+            type="search"
+            placeholder="Filter by title"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
           />
-        </label>
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
-          <button type="button" disabled={busy} onClick={() => void runScrape()}>
-            Run scrape
-          </button>
-          <button type="button" disabled={busy} onClick={() => void importSample()}>
-            Import sample scholarships
-          </button>
         </div>
-      </section>
-
-      <section>
-        <h2>Scholarships</h2>
-        <button type="button" disabled={busy} onClick={() => void loadScholarships()}>
-          Refresh list
-        </button>
-        <p>
-          Total: <strong>{schTotal}</strong>, showing <strong>{scholarships.length}</strong>
+        <p className="muted">
+          Showing <strong>{filteredScholarships.length}</strong> of <strong>{schTotal}</strong>
         </p>
-        <figure>
+        <div className="table-wrap">
           <table>
             <thead>
               <tr>
@@ -373,31 +436,50 @@ export default function App() {
               </tr>
             </thead>
             <tbody>
-              {scholarships.map((s) => (
+              {filteredScholarships.map((s) => (
                 <tr key={s.id}>
                   <td>{s.title}</td>
                   <td>{s.deadline ?? "—"}</td>
                   <td>
                     <a href={s.source_url} target="_blank" rel="noreferrer">
-                      open
+                      Open
                     </a>
                   </td>
                 </tr>
               ))}
+              {filteredScholarships.length === 0 ? (
+                <tr>
+                  <td colSpan={3}>No scholarships found for this filter.</td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
-        </figure>
+        </div>
       </section>
 
       <section>
-        <h2>Matches</h2>
-        <button type="button" disabled={busy} onClick={() => void loadMatches()}>
-          Get matches
-        </button>
+        <h2>5) Matches</h2>
+        <div className="row">
+          <button type="button" disabled={busy} onClick={() => void loadMatches()}>
+            Get matches
+          </button>
+        </div>
+        {topMatches.length > 0 ? (
+          <article className="top-matches">
+            <h3>Top recommendations</h3>
+            <ol>
+              {topMatches.map((m) => (
+                <li key={m.scholarship.id}>
+                  {m.scholarship.title} <strong>({m.score.toFixed(2)})</strong>
+                </li>
+              ))}
+            </ol>
+          </article>
+        ) : null}
         {matches.map((m) => (
-          <details key={m.scholarship.id} style={{ marginTop: "0.75rem" }}>
+          <details key={m.scholarship.id}>
             <summary>
-              <strong>{m.scholarship.title}</strong> — score {m.score.toFixed(2)}
+              <strong>{m.scholarship.title}</strong> - score {m.score.toFixed(2)}
             </summary>
             <ul>
               {m.reasons.map((r, i) => (
