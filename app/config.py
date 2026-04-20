@@ -11,6 +11,7 @@ class Settings(BaseSettings):
 
     admin_token: str = "dev-admin-change-me"
     cors_dev: bool = True
+    cors_origins: str = ""
     scheduled_scrape_enabled: bool = False
     scrape_interval_minutes: int = 360
     buddy4study_list_url: str = "https://www.buddy4study.com/scholarships"
@@ -56,6 +57,9 @@ class Settings(BaseSettings):
 
     def sqlalchemy_connect_args(self) -> dict:
         return {}
+
+    def cors_origin_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
 
 settings = Settings()

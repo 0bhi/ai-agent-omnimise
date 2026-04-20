@@ -55,16 +55,24 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Scholarship Agent API", lifespan=lifespan)
 
+allow_origins = set(settings.cors_origin_list())
+allow_origin_regex: str | None = None
 if settings.cors_dev:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[
+    allow_origins.update(
+        {
             "http://localhost",
             "http://127.0.0.1",
             "http://localhost:5173",
             "http://127.0.0.1:5173",
-        ],
-        allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+        }
+    )
+    allow_origin_regex = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+
+if allow_origins or allow_origin_regex:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=sorted(allow_origins),
+        allow_origin_regex=allow_origin_regex,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
