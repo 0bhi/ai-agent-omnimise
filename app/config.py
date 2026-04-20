@@ -5,10 +5,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # Turso only: libsql://... from the Turso dashboard (env: DATABASE_URL)
+    # PostgreSQL URL from Neon, Render Postgres, etc. (env: DATABASE_URL)
+    # Use postgresql://... or postgres://... — psycopg is selected automatically.
     database_url: str
-    # Turso database auth token (env: TURSO_AUTH_TOKEN)
-    turso_auth_token: str | None = None
 
     admin_token: str = "dev-admin-change-me"
     cors_dev: bool = True
@@ -36,20 +35,27 @@ class Settings(BaseSettings):
         return v
 
     @model_validator(mode="after")
-    def require_turso(self) -> "Settings":
-        if not self.database_url.startswith("libsql://"):
-            raise ValueError("DATABASE_URL must be a Turso libsql:// URL")
-        token = (self.turso_auth_token or "").strip()
-        if not token:
-            raise ValueError("TURSO_AUTH_TOKEN is required for Turso")
-        self.turso_auth_token = token
+    def require_postgres_url(self) -> "Settings":
+        head = self.database_url.split("://", 1)[0].lower()
+        allowed = {"postgresql", "postgres", "postgresql+psycopg", "postgresql+psycopg2"}
+        if head not in allowed:
+            raise ValueError(
+                "DATABASE_URL must be a PostgreSQL URL (e.g. Neon: postgresql://user:pass@host/db?sslmode=require)",
+            )
         return self
 
     def sqlalchemy_database_url(self) -> str:
-        return f"sqlite+{self.database_url}?secure=true"
+        u = self.database_url
+        if u.startswith("postgresql+psycopg://") or u.startswith("postgresql+psycopg2://"):
+            return u
+        if u.startswith("postgresql://"):
+            return "postgresql+psycopg://" + u[len("postgresql://") :]
+        if u.startswith("postgres://"):
+            return "postgresql+psycopg://" + u[len("postgres://") :]
+        return u
 
     def sqlalchemy_connect_args(self) -> dict:
-        return {"auth_token": self.turso_auth_token}
+        return {}
 
 
 settings = Settings()

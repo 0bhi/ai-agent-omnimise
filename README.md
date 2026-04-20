@@ -9,12 +9,13 @@ FastAPI service that can scrape Buddy4study-style listing pages (configurable UR
 
 ## Backend setup
 
-Database is **Turso only** (remote libSQL). Copy `example.env` to `.env` and set:
+Database is **PostgreSQL** (e.g. **Neon**). Copy `example.env` to `.env` and set:
 
-- `DATABASE_URL` — `libsql://...` from the Turso dashboard
-- `TURSO_AUTH_TOKEN` — database token from Turso
+- `DATABASE_URL` — `postgresql://...` from Neon (often includes `?sslmode=require`)
 
 Resume uploads are parsed from a **temporary file** only; nothing is stored under `./data/`.
+
+Dependencies use **`psycopg`** (binary wheels) — no Rust toolchain, which avoids build failures on platforms like Render.
 
 ```powershell
 cd "c:\Users\91813\Desktop\omnimise ai agent"
@@ -24,7 +25,7 @@ pip install -e .
 alembic upgrade head
 ```
 
-On hosts like Render, use **Python 3.11** (see `runtime.txt`) so `sqlalchemy-libsql` / `libsql-experimental` can install from wheels instead of building Rust from source.
+On Render, pin **Python 3.11** via `runtime.txt` if the default image uses a version without wheels for some packages.
 
 Optional environment variables (see `app/config.py`):
 
