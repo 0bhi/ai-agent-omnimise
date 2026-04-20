@@ -17,9 +17,6 @@ log = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    settings.data_dir.mkdir(parents=True, exist_ok=True)
-    settings.resume_dir.mkdir(parents=True, exist_ok=True)
-
     scheduler: BackgroundScheduler | None = None
     if settings.scheduled_scrape_enabled:
         scheduler = BackgroundScheduler()

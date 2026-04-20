@@ -1,3 +1,5 @@
+import tempfile
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -41,23 +43,20 @@ async def upload_resume(
     if suffix not in {"pdf", "docx"}:
         raise HTTPException(status_code=400, detail="Only PDF or DOCX files are supported")
 
-    from pathlib import Path
-
-    from app.config import settings
-
-    settings.resume_dir.mkdir(parents=True, exist_ok=True)
-    safe_name = (file.filename or "resume").replace("\\", "_").replace("/", "_")
-    path = settings.resume_dir / f"{user.id}_{safe_name}"
     data = await file.read()
-    path.write_bytes(data)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{suffix}") as tmp:
+        tmp.write(data)
+        tmp_path = tmp.name
+    path = Path(tmp_path)
     try:
         extracted, preview = build_resume_extracted(path)
     except Exception as exc:  # noqa: BLE001
-        path.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail=f"Could not parse resume: {exc}") from exc
+    finally:
+        path.unlink(missing_ok=True)
 
     now = datetime.now(timezone.utc)
-    user.resume_path = str(path)
+    user.resume_path = None
     user.resume_original_name = file.filename
     user.resume_extracted = extracted
     user.resume_text_preview = preview

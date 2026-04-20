@@ -9,6 +9,13 @@ FastAPI service that can scrape Buddy4study-style listing pages (configurable UR
 
 ## Backend setup
 
+Database is **Turso only** (remote libSQL). Copy `example.env` to `.env` and set:
+
+- `DATABASE_URL` — `libsql://...` from the Turso dashboard
+- `TURSO_AUTH_TOKEN` — database token from Turso
+
+Resume uploads are parsed from a **temporary file** only; nothing is stored under `./data/`.
+
 ```powershell
 cd "c:\Users\91813\Desktop\omnimise ai agent"
 python -m venv .venv
@@ -17,9 +24,10 @@ pip install -e .
 alembic upgrade head
 ```
 
+On hosts like Render, use **Python 3.11** (see `runtime.txt`) so `sqlalchemy-libsql` / `libsql-experimental` can install from wheels instead of building Rust from source.
+
 Optional environment variables (see `app/config.py`):
 
-- `DATABASE_URL` — default `sqlite:///./data/app.db`
 - `ADMIN_TOKEN` — default `dev-admin-change-me` (change for any shared environment)
 - `CORS_DEV` — default `true` (enables CORS for the Vite dev server)
 - `BUDDY4STUDY_LIST_URL` — starting URL for discovery (default `https://www.buddy4study.com/scholarships`)
